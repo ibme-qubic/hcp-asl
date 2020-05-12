@@ -5,3 +5,4 @@ pyfab
 regtools
 toblerone
 gradunwarp
+requests

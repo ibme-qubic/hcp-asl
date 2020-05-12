@@ -8,6 +8,8 @@ name of the MT correction scaling factors image.
 """
 
 import sys
+import os
+
 from hcpasl.initial_bookkeeping import initial_processing
 from hcpasl.m0_mt_correction import correct_M0
 from hcpasl.asl_correction import hcp_asl_moco
@@ -59,10 +61,28 @@ def main():
         help="Filename of the gradient coefficients for gradient"
             + "distortion correction (optional)."
     )
+    parser.add_argument(
+        "--fabberdir",
+        help="User Fabber executable in <fabberdir>/bin/ for users"
+            + "with FSL < 6.0.4"
+    )
     # assign arguments to variables
     args = parser.parse_args()
     mt_name = args.scaling_factors
     subject_dir = args.subject_dir
+    if args.fabberdir:
+        if not os.path.isfile(os.path.join(args.fabberdir, "bin", "fabber_asl")):
+            print("ERROR: specified Fabber in %s, but no fabber_asl executable found in %s/bin" % (args.fabberdir, args.fabberdir))
+            sys.exit(1)
+
+        # To use a custom Fabber executable we set the FSLDEVDIR environment variable
+        # which prioritises executables in $FSLDEVDIR/bin over those in $FSLDIR/bin.
+        # Note that this could cause problems in the unlikely event that the user
+        # already has a $FSLDEVDIR set up with custom copies of other things that
+        # oxford_asl uses...
+        print("Using Fabber-ASL executable %s/bin/fabber_asl" % args.fabberdir)
+        os.environ["FSLDEVDIR"] = os.path.abspath(args.fabberdir)
+
     print(f"Processing subject {subject_dir}.")
     if args.grads:
         print("Including gradient distortion correction step.")

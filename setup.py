@@ -25,7 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'hcp_asl = scripts.run_pipeline:main',
-            'hcp_asl_distcorr = scripts.distcorr_warps:main'
+            'hcp_asl_distcorr = scripts.distcorr_warps:main',
+            'get_updated_fabber = scripts.get_updated_fabber:main',
         ]
     }
 )
