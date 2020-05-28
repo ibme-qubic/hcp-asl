@@ -27,10 +27,10 @@ def process_subject(subject_dir, mt_factors, gradients=None):
     """
     if mt_factors:
         nobc = False
+        mt_factors = Path(mt_factors)
     else:
         nobc = True
     subject_dir = Path(subject_dir)
-    mt_factors = Path(mt_factors)
     initial_processing(subject_dir)
     correct_M0(subject_dir, mt_factors)
     hcp_asl_moco(subject_dir, mt_factors)
