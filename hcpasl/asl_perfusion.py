@@ -4,17 +4,23 @@ from pathlib import Path
 import subprocess
 import numpy as np
 
-def run_oxford_asl(subject_dir):
+def run_oxford_asl(subject_dir, nobc=False):
     # load subject's json
     json_dict = load_json(subject_dir)
 
+    # extension for pipeline without banding correction
+    if nobc:
+        ext = "_nobc"
+    else:
+        ext = None
+
     # directory for oxford_asl results
     structasl_dir = Path(json_dict['structasl'])
-    oxford_dir = structasl_dir / 'TIs/OxfordASL'
-    pvgm_name = structasl_dir / 'PVEs/pve_GM.nii.gz'
-    pvwm_name = structasl_dir / 'PVEs/pve_WM.nii.gz'
-    calib_name = structasl_dir / 'Calib/Calib0/DistCorr/calib0_dcorr.nii.gz'
-    brain_mask = structasl_dir / 'reg/ASL_grid_T1w_acpc_dc_restore_brain_mask.nii.gz'
+    oxford_dir = structasl_dir / f'TIs{ext}/OxfordASL'
+    pvgm_name = structasl_dir / f'PVEs{ext}/pve_GM.nii.gz'
+    pvwm_name = structasl_dir / f'PVEs{ext}/pve_WM.nii.gz'
+    calib_name = structasl_dir / f'Calib/Calib0/DistCorr{ext}/calib0_dcorr.nii.gz'
+    brain_mask = structasl_dir / f'reg{ext}/ASL_grid_T1w_acpc_dc_restore_brain_mask.nii.gz'
     cmd = [
         "oxford_asl",
         f"-i {json_dict['beta_perf']}",
