@@ -423,4 +423,9 @@ def hcp_asl_moco(subject_dir, mt_factors):
             'ASL_stcorr': str(stcorr2_name),
             'scaling_factors': str(combined_factors_name)
         }
-        update_json(important_names, json_dict)
+    else:
+        important_names = {
+            'ASL_biascorr': str(biascorr_name)
+        }
+
+    update_json(important_names, json_dict)
