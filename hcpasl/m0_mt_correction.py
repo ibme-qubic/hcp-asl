@@ -41,7 +41,7 @@ def update_json(new_dict, old_dict):
     with open(Path(old_dict['json_name']), 'w') as fp:
         json.dump(old_dict, fp, sort_keys=True, indent=4)
 
-def correct_M0(subject_dir, mt_factors):
+def correct_M0(subject_dir, mt_factors=None):
     """
     Correct the M0 images for a particular subject whose data 
     is stored in `subject_dir`. The corrections to be 
@@ -91,15 +91,16 @@ def correct_M0(subject_dir, mt_factors):
         # apply bias field to original m0 image (i.e. not BETted)
         biascorr_name = biascorr_dir / f'{calib_name_stem}_restore.nii.gz'
         fslmaths(calib_name).div(str(bias_name)).run(str(biascorr_name))
-
-        # apply mt_factors to bias-corrected m0 image
-        mtcorr_name = mtcorr_dir / f'{calib_name_stem}_mtcorr.nii.gz'
-        fslmaths(str(biascorr_name)).mul(str(mt_factors)).run(str(mtcorr_name))
-
-        # add locations of above files to the json
         important_names = {
             f'{calib_name_stem}_bias' : str(bias_name),
-            f'{calib_name_stem}_bc' : str(biascorr_name),
-            f'{calib_name_stem}_mc' : str(mtcorr_name)
+            f'{calib_name_stem}_bc' : str(biascorr_name)
         }
+
+        # apply mt_factors to bias-corrected m0 image if given
+        if mt_factors:
+            mtcorr_name = mtcorr_dir / f'{calib_name_stem}_mtcorr.nii.gz'
+            fslmaths(str(biascorr_name)).mul(str(mt_factors)).run(str(mtcorr_name))
+            important_names.update({f'{calib_name_stem}_mc' : str(mtcorr_name)})
+
+        # add locations of above files to the json
         update_json(important_names, json_dict)
