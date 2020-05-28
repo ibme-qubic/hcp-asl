@@ -25,6 +25,10 @@ def process_subject(subject_dir, mt_factors, gradients=None):
     Run pipeline for individual subject specified by 
     `subject_dir`.
     """
+    if mt_factors:
+        nobc = False
+    else:
+        nobc = True
     subject_dir = Path(subject_dir)
     mt_factors = Path(mt_factors)
     initial_processing(subject_dir)
@@ -41,8 +45,8 @@ def process_subject(subject_dir, mt_factors, gradients=None):
     if not mt_factors:
         dist_corr_call.append('--nobc')
     subprocess.run(dist_corr_call, check=True)
-    tag_control_differencing(subject_dir)
-    run_oxford_asl(subject_dir)
+    tag_control_differencing(subject_dir, nobc)
+    run_oxford_asl(subject_dir, nobc)
     project_to_surface(subject_dir)
 
 def main():
