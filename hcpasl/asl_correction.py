@@ -328,20 +328,27 @@ def hcp_asl_moco(subject_dir, mt_factors):
     satrecov_dir_name = tis_dir_name / 'SatRecov'
     stcorr1_dir_name = tis_dir_name / 'STCorr/FirstPass'
     stcorr2_dir_name = tis_dir_name / 'STCorr/SecondPass'
-    moco_dir_name = tis_dir_name / 'MoCo'
+    if mt_factors:
+        moco_dir_name = tis_dir_name / 'MoCo'
+    else:
+        moco_dir_name = tis_dir_name / 'MoCo_nobc'
     asln2m0_name = moco_dir_name / 'asln2m0.mat'
     asln2asl0_name = moco_dir_name / 'asln2asl0.mat'
     asl02asln_name = moco_dir_name / 'asl02asln.mat'
-    create_dirs([
-        biascorr_dir_name, 
-        mtcorr_dir_name, 
+    dirs_list = [
+        biascorr_dir_name,
         satrecov_dir_name,
-        stcorr1_dir_name,
-        stcorr2_dir_name,
         moco_dir_name,
         asln2asl0_name,
         asl02asln_name
-    ])
+    ]
+    if mt_factors:
+        dirs_list.append(
+            mtcorr_dir_name,
+            stcorr1_dir_name,
+            stcorr2_dir_name
+        )
+    create_dirs(dirs_list)
 
     # bias-correction of original ASL series
     asl_name = Path(json_dict['ASL_seq'])
@@ -352,24 +359,28 @@ def hcp_asl_moco(subject_dir, mt_factors):
     biascorr_name = biascorr_dir_name / 'tis_biascorr.nii.gz'
     fslmaths(str(asl_name)).div(str(bias_name)).run(str(biascorr_name))
     
-    # apply MT scaling factors to the bias-corrected ASL series
-    mtcorr_name = mtcorr_dir_name / 'tis_mtcorr.nii.gz'
-    fslmaths(str(biascorr_name)).mul(str(mt_factors)).run(str(mtcorr_name))
+    if mt_factors:
+        # apply MT scaling factors to the bias-corrected ASL series
+        mtcorr_name = mtcorr_dir_name / 'tis_mtcorr.nii.gz'
+        fslmaths(str(biascorr_name)).mul(str(mt_factors)).run(str(mtcorr_name))
 
-    # estimate satrecov model on bias-corrected, MT-corrected ASL series
-    t1_name = _saturation_recovery(mtcorr_name, satrecov_dir_name, ntis, iaf, ibf, tis, rpts)
-    # median filter the parameter estimates
-    t1_filt_name = _fslmaths_med_filter_wrapper(t1_name)
-    # perform initial slice-timing correction using estimated tissue params
-    stcorr_img, st_factors_img = _slicetiming_correction(mtcorr_name, t1_filt_name, tis, rpts, slicedt, sliceband, n_slices)
-    stcorr1_name = stcorr1_dir_name / 'tis_stcorr.nii.gz'
-    stcorr_img.save(stcorr1_name)
-    st_factors1_name = stcorr1_dir_name / 'st_scaling_factors.nii.gz'
-    st_factors_img.save(st_factors1_name)
+        # estimate satrecov model on bias-corrected, MT-corrected ASL series
+        t1_name = _saturation_recovery(mtcorr_name, satrecov_dir_name, ntis, iaf, ibf, tis, rpts)
+        # median filter the parameter estimates
+        t1_filt_name = _fslmaths_med_filter_wrapper(t1_name)
+        # perform initial slice-timing correction using estimated tissue params
+        stcorr_img, st_factors_img = _slicetiming_correction(mtcorr_name, t1_filt_name, tis, rpts, slicedt, sliceband, n_slices)
+        stcorr1_name = stcorr1_dir_name / 'tis_stcorr.nii.gz'
+        stcorr_img.save(stcorr1_name)
+        st_factors1_name = stcorr1_dir_name / 'st_scaling_factors.nii.gz'
+        st_factors_img.save(st_factors1_name)
 
     # motion estimation from ASL to M0 image
     reg_name = moco_dir_name / 'initial_registration_TIs.nii.gz'
-    mcflirt(stcorr_img, reffile=json_dict['calib0_mc'], mats=True, out=str(reg_name))
+    if mt_factors:
+        mcflirt(stcorr_img, reffile=json_dict['calib0_mc'], mats=True, out=str(reg_name))
+    else:
+        mcflirt(str(biascorr_name), reffile=json_dict['calib0_bc'], mats=True, out=str(reg_name))
     # rename mcflirt matrices directory
     orig_mcflirt = (moco_dir_name / 'initial_registration_TIs.nii.gz.mat')
     if asln2m0_name.exists():
@@ -389,26 +400,27 @@ def hcp_asl_moco(subject_dir, mt_factors):
         np.savetxt(asln2asl0_name / transformation.stem, forward_trans)
         np.savetxt(asl02asln_name / transformation.stem, inv_trans)
 
-    # apply inverse transformations to parameter estimates to align them with 
-    # the individual frames of the ASL series
-    reg_t1_filt_name = t1_filt_name.parent / f'{t1_filt_name.stem.split(".")[0]}_reg.nii.gz'
-    _register_param(t1_filt_name, asl02asln_name, json_dict['calib0_mc'], reg_t1_filt_name)
+    if mt_factors:
+        # apply inverse transformations to parameter estimates to align them with 
+        # the individual frames of the ASL series
+        reg_t1_filt_name = t1_filt_name.parent / f'{t1_filt_name.stem.split(".")[0]}_reg.nii.gz'
+        _register_param(t1_filt_name, asl02asln_name, json_dict['calib0_mc'], reg_t1_filt_name)
 
-    # second slice-timing correction using registered parameter estimates
-    stcorr_img, st_factors_img = _slicetiming_correction(mtcorr_name, reg_t1_filt_name, tis, rpts, slicedt, sliceband, n_slices)
+        # second slice-timing correction using registered parameter estimates
+        stcorr_img, st_factors_img = _slicetiming_correction(mtcorr_name, reg_t1_filt_name, tis, rpts, slicedt, sliceband, n_slices)
 
-    # save slice-time corrected image and slice-time correcting scaling factors
-    stcorr2_name = stcorr2_dir_name / 'tis_stcorr.nii.gz'
-    stcorr_img.save(stcorr2_name)
-    st_factors2_name = stcorr2_dir_name / 'st_scaling_factors.nii.gz'
-    st_factors_img.save(st_factors2_name)
-    # also obtain combined MT- and ST- correction scaling factors
-    combined_factors_name = stcorr2_dir_name / 'combined_scaling_factors.nii.gz'
-    fslmaths(st_factors2_name).mul(mt_factors).run(combined_factors_name)
+        # save slice-time corrected image and slice-time correcting scaling factors
+        stcorr2_name = stcorr2_dir_name / 'tis_stcorr.nii.gz'
+        stcorr_img.save(stcorr2_name)
+        st_factors2_name = stcorr2_dir_name / 'st_scaling_factors.nii.gz'
+        st_factors_img.save(st_factors2_name)
+        # also obtain combined MT- and ST- correction scaling factors
+        combined_factors_name = stcorr2_dir_name / 'combined_scaling_factors.nii.gz'
+        fslmaths(st_factors2_name).mul(mt_factors).run(combined_factors_name)
 
-    # save locations of important files in the json
-    important_names = {
-        'ASL_stcorr': str(stcorr2_name),
-        'scaling_factors': str(combined_factors_name)
-    }
-    update_json(important_names, json_dict)
+        # save locations of important files in the json
+        important_names = {
+            'ASL_stcorr': str(stcorr2_name),
+            'scaling_factors': str(combined_factors_name)
+        }
+        update_json(important_names, json_dict)
