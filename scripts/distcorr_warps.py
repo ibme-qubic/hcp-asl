@@ -334,8 +334,8 @@ def main():
     oph = (study_dir + "/" + sub_num + f"/ASL/TIs/DistCorr{ext}")
     outdir = (study_dir + "/" + sub_num + f"/T1w/ASL/reg{ext}")
     pve_path = (study_dir + "/" + sub_num + f"/T1w/ASL/PVEs{ext}")
-    T1w_oph = (study_dir + "/" + sub_num + f"/T1w/ASL/TIs/DistCorr{ext}")
-    T1w_cal_oph  = (study_dir + "/" + sub_num + f"/T1w/ASL/Calib/Calib0/DistCorr{ext}")
+    T1w_oph = (study_dir + "/" + sub_num + f"/T1w/ASL/TIs{ext}/DistCorr{ext}")
+    T1w_cal_oph  = (study_dir + "/" + sub_num + f"/T1w/ASL/Calib{ext}/Calib0/DistCorr{ext}")
     need_dirs = [oph, outdir, pve_path, T1w_oph, T1w_cal_oph]
     for req_dir in need_dirs:
         Path(req_dir).mkdir(parents=True, exist_ok=True)
