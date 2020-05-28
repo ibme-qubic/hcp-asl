@@ -51,7 +51,8 @@ def main():
         help="The directory of the subject you wish to process."
     )
     parser.add_argument(
-        "scaling_factors",
+        "-s",
+        "--scalingfactors",
         help="Filename of the empirically estimated MT-correction"
             + "scaling factors."
     )
@@ -68,7 +69,14 @@ def main():
     )
     # assign arguments to variables
     args = parser.parse_args()
-    mt_name = args.scaling_factors
+    if args.scalingfactors:
+        print("Scaling factors have been provided, will include "
+            + "banding correction steps.")
+        mt_name = args.scalingfactors
+    else:
+        print("No scaling factors provided, will skip "
+            + "banding correction steps.")
+        mt_name = None
     subject_dir = args.subject_dir
     if args.fabberdir:
         if not os.path.isfile(os.path.join(args.fabberdir, "bin", "fabber_asl")):
