@@ -237,8 +237,8 @@ def calc_warp_jacobian(distcorr_dir):
 
 # apply the combined distortion correction warp
 def apply_distcorr_warp(asldata_orig, T1space_ref, asldata_T1space, distcorr_dir,
-                        moco_xfms, calib_orig, calib_T1space, calib_xfms, sfacs_orig,
-                        sfacs_T1space):
+                        moco_xfms, calib_orig, calib_T1space, calib_xfms, sfacs_orig=None,
+                        sfacs_T1space=None):
     """
     Application of motion correction, and EPI and gradient distortion corrections, 
     and transformation to T1w-space in one step. Leaving the ASL and calibration data 
@@ -260,27 +260,26 @@ def apply_distcorr_warp(asldata_orig, T1space_ref, asldata_T1space, distcorr_dir
 
     calib_jaco_call = ("fslmaths " + calib_T1space + " -mul " + distcorr_dir + 
                     "/distcorr_jacobian " + calib_T1space)
-
-    sfacs_apply_call = ("applywarp -i " + sfacs_orig + " -r " + T1space_ref + " -o " +
-                    sfacs_T1space + " --premat=" + moco_xfms + " -w " + 
-                    distcorr_dir + "/distcorr_warp" + " --rel --interp=trilinear" +
-                    " --paddingsize=1 --super --superlevel=a")
-
-    sfacs_jaco_call = ("fslmaths " + sfacs_T1space + " -mul " + distcorr_dir + 
-                    "/distcorr_jacobian " + sfacs_T1space)
     # print(asl_apply_call)
     # print(asl_jaco_call)
     # print(calib_apply_call)
     # print(calib_jaco_call)
-    # print(sfacs_apply_call)
-    # print(sfacs_jaco_call)
-
     sp.run(asl_apply_call.split(), check=True, stderr=sp.PIPE, stdout=sp.PIPE)
     sp.run(asl_jaco_call.split(), check=True, stderr=sp.PIPE, stdout=sp.PIPE)
     sp.run(calib_apply_call.split(), check=True, stderr=sp.PIPE, stdout=sp.PIPE)
     sp.run(calib_jaco_call.split(), check=True, stderr=sp.PIPE, stdout=sp.PIPE)
-    sp.run(sfacs_apply_call.split(), check=True, stderr=sp.PIPE, stdout=sp.PIPE)
-    sp.run(sfacs_jaco_call.split(), check=True, stderr=sp.PIPE, stdout=sp.PIPE)
+    if (sfacs_orig and sfacs_T1space):
+        sfacs_apply_call = ("applywarp -i " + sfacs_orig + " -r " + T1space_ref + " -o " +
+                        sfacs_T1space + " --premat=" + moco_xfms + " -w " + 
+                        distcorr_dir + "/distcorr_warp" + " --rel --interp=trilinear" +
+                        " --paddingsize=1 --super --superlevel=a")
+
+        sfacs_jaco_call = ("fslmaths " + sfacs_T1space + " -mul " + distcorr_dir + 
+                        "/distcorr_jacobian " + sfacs_T1space)
+        # print(sfacs_apply_call)
+        # print(sfacs_jaco_call)
+        sp.run(sfacs_apply_call.split(), check=True, stderr=sp.PIPE, stdout=sp.PIPE)
+        sp.run(sfacs_jaco_call.split(), check=True, stderr=sp.PIPE, stdout=sp.PIPE)
 
 def find_field_maps(study_dir, subject_number):
     """
@@ -317,16 +316,26 @@ def main():
         help="Filename of the gradient coefficients for gradient"
             + "distortion correction (optional)."
     )
+    parser.add_argument(
+        "--nobc",
+        default=False,
+        action='store_true',
+        help="Use this flag to run without banding correction steps."
+    )
     args = parser.parse_args()
     study_dir = args.study_dir
     sub_num = args.sub_number
     grad_coeffs = args.grads
 
-    oph = (study_dir + "/" + sub_num + "/ASL/TIs/DistCorr")
-    outdir = (study_dir + "/" + sub_num + "/T1w/ASL/reg")
-    pve_path = (study_dir + "/" + sub_num + "/T1w/ASL/PVEs")
-    T1w_oph = (study_dir + "/" + sub_num + "/T1w/ASL/TIs/DistCorr")
-    T1w_cal_oph  = (study_dir + "/" + sub_num + "/T1w/ASL/Calib/Calib0/DistCorr")
+    if args.nobc:
+        ext = "_nobc"
+    else:
+        ext = None
+    oph = (study_dir + "/" + sub_num + f"/ASL/TIs/DistCorr{ext}")
+    outdir = (study_dir + "/" + sub_num + f"/T1w/ASL/reg{ext}")
+    pve_path = (study_dir + "/" + sub_num + f"/T1w/ASL/PVEs{ext}")
+    T1w_oph = (study_dir + "/" + sub_num + f"/T1w/ASL/TIs/DistCorr{ext}")
+    T1w_cal_oph  = (study_dir + "/" + sub_num + f"/T1w/ASL/Calib/Calib0/DistCorr{ext}")
     need_dirs = [oph, outdir, pve_path, T1w_oph, T1w_cal_oph]
     for req_dir in need_dirs:
         Path(req_dir).mkdir(parents=True, exist_ok=True)
@@ -340,10 +349,13 @@ def main():
     t1 = (study_dir + "/" + sub_num + "/T1w/T1w_acpc_dc_restore.nii.gz")
     t1_brain = (study_dir + "/" + sub_num + "/T1w/T1w_acpc_dc_restore_brain.nii.gz")
 
-    asl = (study_dir + "/" + sub_num + "/ASL/TIs/STCorr/SecondPass/tis_stcorr.nii.gz") 
-    t1_asl_res = (study_dir + "/" + sub_num + "/T1w/ASL/reg/ASL_grid_T1w_acpc_dc_restore.nii.gz")
+    if args.nobc:
+        asl = (study_dir + "/" + sub_num + "/ASL/TIs/BiasCorr/tis_biascorr.nii.gz")
+    else:
+        asl = (study_dir + "/" + sub_num + "/ASL/TIs/STCorr/SecondPass/tis_stcorr.nii.gz") 
+    t1_asl_res = (outdir + "/ASL_grid_T1w_acpc_dc_restore.nii.gz")
 
-    asl_v1 = (study_dir + "/" + sub_num + "/ASL/TIs/STCorr/SecondPass/tis_stcorr_vol1.nii.gz")
+    asl_v1 = (asl.split(".")[0] + "_vol1.nii.gz")
     first_asl_call = ("fslroi " + asl + " " + asl_v1 + " 0 1")
     # print(first_asl_call)
     sp.run(first_asl_call.split(), check=True, stderr=sp.PIPE, stdout=sp.PIPE)
@@ -382,7 +394,7 @@ def main():
                 fmap_rads, fmapmag, fmapmagbrain)
     
     # Calculate initial linear transformation from ASL-space to T1w-space
-    asl_v1_brain = (study_dir + "/" + sub_num + "/ASL/TIs/STCorr/SecondPass/tis_stcorr_vol1_brain.nii.gz")
+    asl_v1_brain = (asl_v1.split(".")[0] + "_brain.nii.gz")
     bet_regfrom_call = ("bet " + asl_v1 + " " + asl_v1_brain)
     # print(bet_regfrom_call)
     sp.run(bet_regfrom_call.split(), check=True, stderr=sp.PIPE, stdout=sp.PIPE)
@@ -399,8 +411,8 @@ def main():
                 struct2asl)
 
     # brain mask
-    t1_mask = (study_dir + "/" + sub_num + "/T1w/ASL/reg/T1w_acpc_dc_restore_brain_mask.nii.gz")
-    t1_asl_mask_name = (study_dir + "/" + sub_num + "/T1w/ASL/reg/ASL_grid_T1w_acpc_dc_restore_brain_mask.nii.gz")
+    t1_mask = (outdir + "/T1w_acpc_dc_restore_brain_mask.nii.gz")
+    t1_asl_mask_name = (outdir + "/ASL_grid_T1w_acpc_dc_restore_brain_mask.nii.gz")
     t1_mask_spc = rt.ImageSpace(t1_mask)
     t1_mask_spc_asl = t1_mask_spc.resize_voxels(asl_spc.vox_size / t1_mask_spc.vox_size)
     r = rt.Registration.identity()
@@ -409,12 +421,12 @@ def main():
     
     # Generate PVEs
     aparc_aseg = (study_dir + "/" + sub_num + "/T1w/aparc+aseg.nii.gz")
-    pve_files = (study_dir + "/" + sub_num + "/T1w/ASL/PVEs/pve")
+    pve_files = (pve_path + "/pve")
     gen_pves(Path(t1).parent, asl, pve_files)
 
     # Generate WM mask
     pvwm = (pve_files + "_WM.nii.gz")
-    tissseg = (study_dir + "/" + sub_num + "/T1w/ASL/PVEs/wm_mask.nii.gz")
+    tissseg = (pve_path + "/wm_mask.nii.gz")
     gen_wm_mask(pvwm, tissseg)
     
 
@@ -433,19 +445,23 @@ def main():
     # ASL-gridded T1w-aligned space
     
     asl_distcorr = (T1w_oph + "/tis_distcorr.nii.gz")
-    moco_xfms = (study_dir + "/" + sub_num + "/ASL/TIs/MoCo/asln2asl0.mat") #will this work?
+    moco_xfms = (study_dir + "/" + sub_num + f"/ASL/TIs/MoCo{ext}/asln2asl0.mat") #will this work?
     concat_xfms = str(Path(moco_xfms).parent / f'{Path(moco_xfms).stem}.cat')
     # concatenate xfms like in oxford_asl
     concat_call = f'cat {moco_xfms}/MAT* > {concat_xfms}'
     sp.run(concat_call, shell=True)
     # only correcting and transforming the 1st of the calibration images at the moment
-    calib_orig = (study_dir + "/" + sub_num + "/ASL/Calib/Calib0/MTCorr/calib0_mtcorr.nii.gz")
-    calib_distcorr = (study_dir + "/" + sub_num + "/T1w/ASL/Calib/Calib0/DistCorr/calib0_dcorr.nii.gz")
-    calib_inv_xfm = (study_dir + "/" + sub_num + "/ASL/TIs/MoCo/asln2m0.mat/MAT_0000")
-    calib_xfm = (study_dir + "/" + sub_num + "/ASL/TIs/MoCo/calibTOasl1.mat")
-
-    sfacs_orig = (study_dir + "/" + sub_num + "/ASL/TIs/STCorr/SecondPass/combined_scaling_factors.nii.gz")
-    sfacs_distcorr = (T1w_oph + "/combined_scaling_factors.nii.gz")
+    if args.nobc:
+        calib_orig = (study_dir + "/" + sub_num + "/ASL/Calib/Calib0/BiasCorr/calib0_restore.nii.gz")
+        sfacs_orig = None
+        sfacs_distcorr = None
+    else:
+        calib_orig = (study_dir + "/" + sub_num + "/ASL/Calib/Calib0/MTCorr/calib0_mtcorr.nii.gz")
+        sfacs_orig = (study_dir + "/" + sub_num + "/ASL/TIs/STCorr/SecondPass/combined_scaling_factors.nii.gz")
+        sfacs_distcorr = (T1w_oph + "/combined_scaling_factors.nii.gz")
+    calib_distcorr = (T1w_cal_oph + "/calib0_dcorr.nii.gz")
+    calib_inv_xfm = (study_dir + "/" + sub_num + f"/ASL/TIs/MoCo{ext}/asln2m0.mat/MAT_0000")
+    calib_xfm = (study_dir + "/" + sub_num + f"/ASL/TIs/MoCo{ext}/calibTOasl1.mat")
 
     invert_call = ("convert_xfm -omat " + calib_xfm + " -inverse " + calib_inv_xfm)
     # print(invert_call)

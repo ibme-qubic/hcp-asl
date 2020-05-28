@@ -38,6 +38,8 @@ def process_subject(subject_dir, mt_factors, gradients=None):
     if gradients:
         dist_corr_call.append('--grads')
         dist_corr_call.append(gradients)
+    if not mt_factors:
+        dist_corr_call.append('--nobc')
     subprocess.run(dist_corr_call, check=True)
     tag_control_differencing(subject_dir)
     run_oxford_asl(subject_dir)
