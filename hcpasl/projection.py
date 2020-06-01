@@ -33,7 +33,7 @@ def project_to_surface(subject_dir):
         cmd = [
             "wb_command",
             "-volume-to-surface-mapping",
-            pc_name,
+            name,
             mid_name,
             savename,
             "-ribbon-constrained",
