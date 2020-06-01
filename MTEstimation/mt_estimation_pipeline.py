@@ -66,4 +66,4 @@ with multiprocessing.Pool(multiprocessing.cpu_count()-2) as pool:
     results = pool.map(setup_call, subject_dirs)
 for result in results:
     print(result)
-estimate_mt(subject_dirs, rois, TR)
+estimate_mt(subject_dirs, rois, TR, 'together')

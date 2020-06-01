@@ -37,7 +37,6 @@ def slicetime_correction(image, tissue, tr):
     slice_times = tr + (slice_in_band * slicedt)
     denominator = 1 - np.exp(-slice_times/T1_VALS[tissue])
     numerator = 1 - np.exp(-tr/T1_VALS[tissue])
-    print(numerator / denominator)
     rescaled_image = image * (numerator / denominator)
     return rescaled_image
 
@@ -48,7 +47,29 @@ def undo_st_correction(rescaled_image, tissue, ti):
     descaled_image = rescaled_image * (numerator / denominator)
     return descaled_image
 
-def estimate_mt(subject_dirs, rois=['wm', ], tr=8):
+def fit_linear_model(slice_means, method='separate', resolution=10000):
+    X = np.arange(0, 10, 1).reshape(-1, 1)
+    scaling_factors = np.ones((86, 86, 60))
+    y_pred = np.zeros(shape=(resolution*6, 1))
+    if method == 'separate':
+        X_pred = np.arange(0, 10, 10/resolution).reshape(-1, 1)
+        for band in range(1, 5):
+            y = slice_means[10*band : 10*band+10]
+            model = LinearRegression()
+            model.fit(X, y)
+            scaling_factors[:, :, 10*band : 10*(band+1)] = model.intercept_ / model.predict(X)
+            y_pred[resolution*band : resolution*(band+1), 0] = model.predict(X_pred)
+    elif method=='together':
+        X_pred = np.tile(np.arange(0, 10, 10/resolution), 4)[..., np.newaxis]
+        y_train = np.vstack(np.split(slice_means, 6)[1:5])
+        y_train = y_train.mean(axis=0).reshape(-1, 1)
+        model = LinearRegression()
+        model.fit(X, y_train)
+        scaling_factors[:, :, 10:50] = model.intercept_ / model.predict(np.tile(X, (4, 1))).flatten()
+        y_pred[resolution : resolution*5] = model.predict(X_pred)
+    return scaling_factors, X_pred, y_pred
+
+def estimate_mt(subject_dirs, rois=['wm', ], tr=8, method='separate'):
     """
     Estimates the slice-dependent MT effect on the given subject's 
     calibration images. Performs the estimation using a linear 
@@ -58,6 +79,7 @@ def estimate_mt(subject_dirs, rois=['wm', ], tr=8):
     for tissue in rois:
         # initialise array to store image-level means
         mean_array = np.zeros((60, 2*len(subject_dirs)))
+        count_array = np.zeros((60, 2*len(subject_dirs), 2)) # wm and gm
         # iterate over subjects
         for n1, subject_dir in enumerate(subject_dirs):
             print(subject_dir)
@@ -82,6 +104,11 @@ def estimate_mt(subject_dirs, rois=['wm', ], tr=8):
                         tr=tr
                     )
                     masked_data = gm_masked_data + wm_masked_data
+                    gm_bin = np.where(gm_masked_data>0, 1, 0)
+                    gm_count = np.sum(gm_bin, axis=(0, 1))[..., np.newaxis]
+                    wm_bin = np.where(wm_masked_data>0, 1, 0)
+                    wm_count = np.sum(wm_bin, axis=(0, 1))[..., np.newaxis]
+                    count_array[:, 2*n1 + n2, :] = np.hstack((wm_count, gm_count))
                 else:
                     # load masked calibration data
                     masked_data = slicetime_correction(
@@ -94,28 +121,22 @@ def estimate_mt(subject_dirs, rois=['wm', ], tr=8):
                 # calculate slicewise summary stats
                 slicewise_mean = np.nanmean(masked_data, axis=(0, 1))
                 mean_array[:, 2*n1 + n2] = slicewise_mean
-        
+
         # calculate non-zero slicewise mean of mean_array
         slice_means = np.nanmean(mean_array, axis=1)
 
+        # calculate slicewise mean of tissue type counts
+        count_means = np.nanmean(count_array, axis=1)
+
         # fit linear models to central 4 bands
         # estimate scaling factors using these models
-        X = np.arange(0, 10, 1).reshape(-1, 1)
-        scaling_factors = np.ones((86, 86, 60))
-        y_pred = np.zeros((40000, 1))
-        for band in BAND_RANGE[tissue]:
-            y = slice_means[10*band: 10*band+10]
-            model = LinearRegression()
-            model.fit(X, y)
-            scaling_factors[:, :, 10*band: 10*band+10] = model.intercept_ / model.predict(X)
-            y_pred[10000*(band-1): 10000*(band-1)+10000, 0] = model.predict(np.arange(0, 10, 0.001).reshape(-1, 1))
-        
-        # plot
+        scaling_factors, X_pred, y_pred = fit_linear_model(slice_means, method=method)
+        # plot slicewise mean signal
         slice_numbers = np.arange(0, 60, 1)
         x_coords = np.arange(0, 60, 10)
         plt.figure(figsize=(8, 4.5))
         plt.scatter(slice_numbers, slice_means)
-        plt.scatter(np.arange(10, 50, 0.001), y_pred.flatten(), color='k', s=0.1)
+        plt.scatter(np.arange(0, 60, 0.001), y_pred.flatten(), color='k', s=0.1)
         plt.ylim([0, PLOT_LIMS[tissue]])
         plt.xlim([0, 60])
         plt.title(f'Mean signal per slice in {tissue} across 47 subjects.')
@@ -125,6 +146,20 @@ def estimate_mt(subject_dirs, rois=['wm', ], tr=8):
             plt.axvline(x_coord, linestyle='-', linewidth=0.1, color='k')
         # save plot
         plt_name = Path().cwd() / f'{tissue}_mean_per_slice.png'
+        plt.savefig(plt_name)
+
+        # plot slicewise mean tissue count for WM and GM
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+        ax.scatter(slice_numbers, count_means[:, 0], c='c', label='WM pve > 70%') # wm mean
+        ax.scatter(slice_numbers, count_means[:, 1], c='g', label='GM pve > 70%') # gm mean
+        ax.legend()
+        for x_coord in x_coords:
+            ax.axvline(x_coord, linestyle='-', linewidth=0.1, color='k')
+        plt.title('Mean number of voxels per slice with' +
+                ' PVE $\geqslant$ 70% across 47 subjects.')
+        plt.xlabel('Slice number')
+        plt.ylabel('Mean number of voxels with PVE $\geqslant$ 70% in a given tissue')
+        plt_name = Path().cwd() / 'mean_voxel_count.png'
         plt.savefig(plt_name)
 
         # # the scaling factors have been estimated on images which have been 
