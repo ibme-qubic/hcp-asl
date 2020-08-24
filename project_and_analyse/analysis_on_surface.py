@@ -72,7 +72,6 @@ def do_basil(perf_name, mean_name, surf_name, tiimg_name, out_dir):
         "fabber_asl",
         f"--surface={surf_name}",
         "--model=aslrest",
-        "--method=vb",
         "--casl",
         "--save-mvn",
         "--overwrite",
@@ -96,7 +95,7 @@ def do_basil(perf_name, mean_name, surf_name, tiimg_name, out_dir):
         f"--tiimg={tiimg_name}"
     ]
     # iteration-specific options
-    for iteration in range(4):
+    for iteration in range(5):
         it_command = base_command.copy()
         # data
         if iteration == 0 or iteration == 1:
@@ -118,6 +117,12 @@ def do_basil(perf_name, mean_name, surf_name, tiimg_name, out_dir):
         if iteration >= 2:
             for n, repeat in enumerate(repeats):
                 it_command.append(f"--rpt{n+1}={repeat}")
+        # spatial or not
+        if iteration < 4:
+            method = "vb"
+        else:
+            method = "spatialvb"
+        it_command.append(f"--method={method}")
         # run
         print(" ".join(it_command))
         subprocess.run(it_command, check=True)

@@ -51,8 +51,15 @@ def process_subject(subject_dir, mt_factors, cores, order, gradients=None):
             ]
             subprocess.run(pv_est_call, check=True)
         tag_control_differencing(subject_dir, target=target)
-        run_oxford_asl(subject_dir, target=target)
-        project_to_surface(subject_dir, target=target)
+        if target == 'asl':
+            run_oxford_asl(subject_dir, target=target)
+            project_to_surface(subject_dir, target=target)
+        else:
+            surface_proc_call = [
+                "hcp_asl_projected",
+                str(subject_dir)
+            ]
+            subprocess.run(surface_proc_call, check=True)
 
 def main():
     # argument handling
