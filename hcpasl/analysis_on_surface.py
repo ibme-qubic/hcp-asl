@@ -5,7 +5,6 @@ from hcpasl.m0_mt_correction import load_json, update_json
 import nibabel as nb
 import numpy as np
 import subprocess
-import igl
 import scipy as sp
 
 REPEATS = (6, 6, 6, 10, 15)
@@ -31,16 +30,15 @@ def load_surface(filename):
     trigs = gii.darrays[1].data    # indices of vertices in each triangle
     return vertices, trigs, gii
 
-def get_laplacian(vertices, faces):
-    l = igl.cotmatrix(vertices, faces)
-    m = igl.massmatrix(vertices, faces, igl.MASSMATRIX_TYPE_VORONOI)
-    minv = sp.sparse.diags(1 / m.diagonal())
-    L = -minv.dot(l)
-    return L
-
 def write_func_data(fname, vertex_data, surf_gii, meta):
     vertex_data = vertex_data.astype(np.float32)
-    array = nb.gifti.GiftiDataArray(vertex_data, coordsys=None, intent='NIFTI_INTENT_TIME_SERIES', datatype=nb.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'], encoding='GIFTI_ENCODING_ASCII')
+    array = nb.gifti.GiftiDataArray(
+        vertex_data, 
+        coordsys=None, 
+        intent='NIFTI_INTENT_TIME_SERIES', 
+        datatype=nb.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'], 
+        encoding='GIFTI_ENCODING_ASCII'
+    )
     array.coordsys = None
     func_gii = nb.gifti.GiftiImage(surf_gii.header, darrays=[array], meta=meta)
     func_gii.to_filename(fname)
@@ -74,7 +72,7 @@ def average_tis(fname, sname, rpts, oname):
 def project_for_fabber():
     pass
 
-def do_basil(perf_name, mean_name, surf_name, tiimg_name, laplacian, out_dir):
+def do_basil(perf_name, mean_name, surf_name, tiimg_name, out_dir):
     # load surface
     repeats = REPEATS
     base_command = [
@@ -101,8 +99,7 @@ def do_basil(perf_name, mean_name, surf_name, tiimg_name, laplacian, out_dir):
         "--exch=mix",
         "--max-iterations=20",
         "--max-trials=10",
-        f"--tiimg={tiimg_name}",
-        f"--laplacian={laplacian}"
+        f"--tiimg={tiimg_name}"
     ]
     # iteration-specific options
     for iteration in range(5):
@@ -149,19 +146,12 @@ def do_basil(perf_name, mean_name, surf_name, tiimg_name, laplacian, out_dir):
         print(" ".join(cmd))
         subprocess.run(cmd, check=True)
 
-def main():
+def surface_analysis(subject_dir):
     # debugging
     force_refresh = True
 
     # argument handling
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        'subject_directory',
-        help="Path to subject's base directory"
-    )
-
-    args = parser.parse_args()
-    subject_dir = Path(args.subject_directory)
+    subject_dir = Path(subject_dir)
 
     # load json
     json_dict = load_json(subject_dir)
@@ -241,25 +231,12 @@ def main():
         surf_gii = nb.load(surf_name)
         write_func_data(str(tiimg_name), tiimg_data, surf_gii, tiimg_meta)
 
-    # get the laplacian for surfaces
-    for side in SIDES:
-        surf_name = json_dict[f'{side}_mid']
-        laplacian_name = tiimg.parent / f'{side}_laplacian.txt'
-        vertices, faces, surf_gii = load_surface(surf_name)
-        laplacian = get_laplacian(vertices, faces)
-        # REALLY bad way to store the weighting matrix - ~4GB!
-        np.save(open(laplacian_name, 'wb'), laplacian.to_dense(), allow_pickle=False)
-
     # run fabber
     for side in SIDES:
         perf_name = projected_beta_dir/f'{side}_{stripped_beta_perf}.func.gii'
         mean_name = projected_beta_dir/f'{side}_{stripped_beta_perf}_mean.func.gii'
         surf_name = json_dict[f'{side}_mid']
         tiimg_name = tiimg.parent / f'{side}_timing.func.gii'
-        laplacian_name = 'laplacian.name.here'
         out_dir = projected_beta_dir / f'{side}_basil'
         create_dirs([out_dir, ])
-        do_basil(perf_name, mean_name, surf_name, tiimg_name, laplacian_name, out_dir)
-    
-if __name__  == '__main__':
-    main()
+        do_basil(perf_name, mean_name, surf_name, tiimg_name, out_dir)
