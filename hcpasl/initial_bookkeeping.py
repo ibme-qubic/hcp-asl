@@ -17,44 +17,49 @@ import json
 
 def create_dirs(dir_list, parents=True, exist_ok=True):
     """
-    Given a list of pathlib.Path directories, `dir_list`, create 
-    these directories.
+    Creates directories in a list.
 
     Default behaviour is to create parent directories if these 
-    don't yet exist and to not throw an error if a directory 
+    don't yet exist and not throw an error if a directory 
     already exists.
 
-    Inputs:
-        - `dir_list` = list of pathlib.Path objects which are 
-            the directories you wish to create
-        - `parents` = Path.mkdir() argument which, if `True`, will 
-            create parent directories if they do not yet exist. 
-            See pathlib.Path.mkdir() for more details. Default 
-            here is `True`.
-        - `exist_ok` = Path.mkdir() argument which, if `True`, 
-            doesn't throw an error if the directory already exists.
-            See pathlib.Path.mkdir() for more details. Default 
-            here is `True`.
+    Parameters
+    ----------
+    dir_list : list of pathlib.Path objects
+        The directories to be created.
+    parents : bool
+        Create parent directories if they do not yet exist. 
+        See pathlib.Path.mkdir() for more details. Default 
+        here is `True`.
+    exist_ok : bool
+        Don't throw an error if the directory already exists.
+        See pathlib.Path.mkdir() for more details. Default 
+        here is `True`.
     """
     for directory in dir_list:
         directory.mkdir(parents=parents, exist_ok=exist_ok)
 
-def initial_processing(subject_dir):
+def initial_processing(subject_dir, mbpcasl, structural, surfaces):
     """
     Perform initial processing for the subject directory provided.
-    These initial processing includes:
-
+    
+    These initial processing steps include:
     - Creating ASL sub-directories in the subject's directory
-    - Finding T1w, fieldmap and mbPCASL directories and scans
     - Splitting mbPCASL sequence into its components of tis, 
-        and calibration images
-    - Run fsl_anat on the subject's structural image
+    and calibration images
     - Creating a json to keep track of import files and 
         directories
     
-    Input:
-        - `subject_dir` = a pathlib.Path object for the subject's
-            data directory
+    Parameters
+    ----------
+    subject_dir : pathlib.Path
+        Path to the subject's base directory.
+    mbpcasl : str
+        Path to the subject's mbPCASL sequence.
+    structural : dict
+        Dictionary containing paths to important structural files.
+    surfaces : dict
+        Dictionary containing paths to important surface files.
     """
     # get subject name
     subject_name = subject_dir.parts[-1]
@@ -72,17 +77,8 @@ def initial_processing(subject_dir):
     # find sub-directories
     # structural
     t1_dir = subject_dir / 'T1w'
-    t1_name = t1_dir / 'T1w_acpc_dc_restore.nii.gz'
-    t1_brain_name = t1_dir / 'T1w_acpc_dc_restore_brain.nii.gz'
-
-    # asl
-    b_dir = subject_dir / f'{subject_name}_V1_B'
-    try:
-        mbpcasl_dir = list(b_dir.glob('**/scans/*mbPCASLhr'))[0]
-    # if no files match this format, it throws an IndexError
-    except IndexError as e:
-        print(e)
-    mbpcasl = mbpcasl_dir / 'resources/NIFTI/files' / f'{subject_name}_V1_B_mbPCASLhr_PA.nii.gz'
+    t1_name = structural['struct']
+    t1_brain_name = structural['sbrain']
     
     # output names
     tis_name = tis_dir / 'tis.nii.gz'
@@ -93,15 +89,6 @@ def initial_processing(subject_dir):
     # get calibration images
     fslroi(str(mbpcasl), calib0_name, 88, 1)
     fslroi(str(mbpcasl), calib1_name, 89, 1)
-
-    # get surface names
-    surfaces_dir = t1_dir / 'fsaverage_LR32k'
-    L_mid = surfaces_dir / f'{subject_name}_V1_MR.L.midthickness.32k_fs_LR.surf.gii'
-    R_mid = surfaces_dir / f'{subject_name}_V1_MR.R.midthickness.32k_fs_LR.surf.gii'
-    L_pial = surfaces_dir / f'{subject_name}_V1_MR.L.pial.32k_fs_LR.surf.gii'
-    R_pial = surfaces_dir / f'{subject_name}_V1_MR.R.pial.32k_fs_LR.surf.gii'
-    L_white = surfaces_dir / f'{subject_name}_V1_MR.L.white.32k_fs_LR.surf.gii'
-    R_white = surfaces_dir / f'{subject_name}_V1_MR.R.white.32k_fs_LR.surf.gii'
 
     # add filenames to a dictionary to be saved to a json
     json_name = asl_dir / 'ASL.json'
@@ -139,12 +126,12 @@ def initial_processing(subject_dir):
         calib1_dir,
         calib0_name,
         calib1_name,
-        L_mid,
-        R_mid,
-        L_pial,
-        R_pial,
-        L_white,
-        R_white,
+        surfaces['L_mid'],
+        surfaces['R_mid'],
+        surfaces['L_pial'],
+        surfaces['R_pial'],
+        surfaces['L_white'],
+        surfaces['R_white'],
         json_name
     ]
     names_dict = {}

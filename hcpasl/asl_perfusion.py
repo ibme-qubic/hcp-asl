@@ -90,6 +90,9 @@ def run_fabber_asl(subject_dir, target='structural'):
     update_json(important_names, json_dict)
 
 def run_oxford_asl(subject_dir, target='structural'):
+    """
+    Run oxford_asl on the HCP's ASL data.
+    """
     # load subject's json
     json_dict = load_json(subject_dir)
 
@@ -110,7 +113,7 @@ def run_oxford_asl(subject_dir, target='structural'):
 
     # additional run-specific options
     if target == 'asl':
-        oxford_dir = Path(json_dict['TIs_dir']) / 'SecondPass/OxfordASL'
+        oxford_dir = Path(json_dict['TIs_dir']) / 'OxfordASL'
         brain_mask = Path(json_dict['structasl']) / 'reg/asl_vol1_mask_init.nii.gz'
         extra_args = [
             f"-o {str(oxford_dir)}",

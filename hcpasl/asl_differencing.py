@@ -18,6 +18,24 @@ import subprocess
 import numpy as np
 
 def tag_control_differencing(subject_dir, target='structural'):
+    """
+    Perform tag-control differencing of a scaled ASL sequence.
+
+    The method follows that in [1]_.
+
+    Parameters
+    ----------
+    subject_dir : pathlib.Path
+        Path to the subject's base directory.
+    target : str, {'structural', 'asl'}
+        Target space.
+
+    .. [1] Suzuki, Yuriko, et al. "A framework for motion 
+       correction of background suppressed arterial spin labeling 
+       perfusion images acquired with simultaneous multi‐slice 
+       EPI." Magnetic resonance in medicine 81.3 (2019): 
+       1553-1565.
+    """
     # load subject's json
     json_dict = load_json(subject_dir)
 
@@ -25,7 +43,7 @@ def tag_control_differencing(subject_dir, target='structural'):
     if target == 'structural':
         distcorr_dir = Path(json_dict['structasl']) / 'TIs/DistCorr'
     else:
-        distcorr_dir = Path(json_dict['TIs_dir']) / 'SecondPass/DistCorr'
+        distcorr_dir = Path(json_dict['TIs_dir']) / 'DistCorr'
     Y_moco_name = distcorr_dir / 'tis_distcorr.nii.gz'
     Y_moco = Image(str(Y_moco_name))
 

@@ -45,21 +45,26 @@ import regtricks as rt
 import multiprocessing as mp
 def _satrecov_worker(control_name, satrecov_dir, tis, rpts, ibf, spatial):
     """
-    Runs fabber's saturation recovery model on the given sequence 
-    of control images.
+    Wrapper for fabber's saturation recovery model.
 
-    Inputs:
-        - `control_name` = name of control sequence
-        - `satrecov_dir` = parent directory for the satrecov 
-            results. Results from this will be stored either 
-            in {`satrecov_dir`}/spatial or 
-            {`satrecov_dir`}/nospatial depending on value of 
-            `spatial`
-        - `tis` = list of TIs for the ASL sequence
-        - `rpts` = list of repeats for each TI in the sequence
-        - `ibf` = input format of the sequence
-        - `spatial` = Boolean for whether to run fabber in 
-            spatial (True) or non-spatial (False) mode
+    Parameters
+    ----------
+    control_name : pathlib.Path
+        Path to the control images.
+    satrecov_dir : pathlib.Path
+        Parent directory for the satrecov results. Results from 
+        this will be stored either in {`satrecov_dir`}/spatial 
+        or {`satrecov_dir`}/nospatial depending on value of 
+        'spatial`.
+    tis : list
+        TIs for the ASL sequence.
+    rpts : list
+        Number of repeats for each TI in the sequence.
+    ibf : str
+        Input format of the sequence.
+    spatial : bool
+        Choose whether to run fabber in spatial (True) or 
+        non-spatial (False) mode.
     """
     # set options for Fabber run, generic to spatial and non-spatial runs
     options = {
@@ -118,13 +123,25 @@ def _satrecov_worker(control_name, satrecov_dir, tis, rpts, ibf, spatial):
 
 def _split_tag_control(asl_name, ntis, iaf, ibf, rpts):
     """
-    Given and ASL time series, `asl_name`, and the sequence details, 
-    split the series into 2 files, even and odd. Save these with the 
-    base of `asl_name`_even.nii.gz for example.
+    Split an ASL sequence into its tag and control images.
 
-    Inputs:
-        - `asl_name` = pathlib.Path object for the ASL series to be 
-            split
+    Parameters
+    ----------
+    asl_name : pathlib.Path
+        Path to the ASL series to be split.
+    ntis : int
+        Number of TIs in the ASL sequence.
+    iaf : str
+        ("tc", "ct", "diff")
+    ibf : str
+        ("tis", "rpts")
+    rpts : list
+        List of number of repeats at each TI.
+    
+    Returns
+    -------
+    even_name : pathlib.Path
+    odd_name : pathlib.Path
     """
     asl_base = asl_name.parent / asl_name.stem.split('.')[0]
     # messy - is there a better way of filling in arguments?
@@ -145,23 +162,20 @@ def _split_tag_control(asl_name, ntis, iaf, ibf, rpts):
 
 def _saturation_recovery(asl_name, results_dir, ntis, iaf, ibf, tis, rpts):
     """
-    Wrapper function for Fabber's `satrecov` model.
+    Use Fabber's `satrecov` model to estimate a T1 map.
 
-    Given an ASL time series, `asl_name`, estimate Fabber's 
-    `satrecov` model on the series' control images. This 
-    function will assume the ASL data is HCP-ASL data which 
-    is ###insert tag-control / control-tag here###.
-
-    Fabber will be called twice:
-        - once with spatial mode off
-        - once with spatial mode on, initialised from the 
-            prior run
+    Split the ASL sequence into tag and control images. Fit the 
+    `satrecov` model on the control images, first with Fabber's 
+    spatial mode off, then with it on.
     
-    Inputs:
-        - `asl_name` = pathlib.Path object for the ASL series on 
-            which the model will be estimated
-        - `results_dir` = pathlib.Path object in which to store the 
-            `nospatial` and `spatial` parameter estimates
+    Parameters
+    ----------
+    asl_name : pathlib.Path
+        Path for the ASL series on which the model will be 
+        estimated.
+    results_dir : pathlib.Path
+        Directory in which to save the `nospatial` and `spatial` 
+        parameter estimates.
     """
     # obtain control images of ASL series
     control_name, tag_name = _split_tag_control(asl_name, ntis, iaf, ibf, rpts)
@@ -193,8 +207,7 @@ def _slicetiming_correction(
     slicedt, sliceband, n_slices
     ):
     """
-    Performs rescaling of ASL series, `asl_name`, accounting for 
-    the estimated T1t in a given voxel, `t1_name`.
+    Correct an ASL sequence for the slice-timing effect.
 
     satrecov_model: S(t) = M_0 * (1 - exp{-t/T1t})
 
@@ -207,11 +220,34 @@ def _slicetiming_correction(
     at t = TI, i.e. scales the values as if they had been imaged 
     at the TI that was specified in the ASL sequence.
 
-    Returns the slice-timing corrected ASL series, `stcorr_img`, 
-    and the scaling factors used to perform the correction, 
-    `stcorr_factors_img` where:
-        `stcorr_factors` = S(TI) / S(TI + n*slicedt)
-        `stcorr_img` = `stcorr_factors` * `asl_name`
+    Parameters
+    ----------
+    asl_name : pathlib.Path
+        Path to the ASL sequence.
+    t1_name : pathlib.Path
+        Path to the T1 estimate. This T1 estimate can be a single 
+        volume or a time-series. If it is a time-series, the 
+        number of time points must match that of the ASL series.
+    tis : list
+        List of TIs used of the sequence.
+    rpts : list
+        List of repeats. This is the number of repeats for each 
+        TI.
+    slicedt : float
+        Time to acquire a slice in the sequence.
+    sliceband : int
+        Number of slices in each band in the multi-band 
+        acquisition.
+    n_slices : int
+        Number of slices in the sequence.
+
+    Returns
+    -------
+    stcorr_img : fsl.image.Image
+        Slice-time corrected ASL sequence.
+    stcorr_factors_img : fsl.image.Image
+        Scaling factors used to perform the slice-time 
+        correction.
     """
     # timing information for scan
     # supposed measurement time of slice
@@ -246,19 +282,26 @@ def _slicetiming_correction(
 
 def _register_param(param_name, transform_dir, reffile, param_reg_name):
     """
+    Apply motion estimates to an image to obtain a time series.
+
     Given a parameter map, `param_name`, and a series of motion 
     estimates, `transform_dir`, apply the motion estimates to 
     the parameter map and obtain a time series of the map 
     in the frame described by the motion estimates.
 
-    Inputs:
-        - `param_name` = pathlib.Path object for the parameter 
-            estimate
-        - `transform_dir` = pathlib.Path object for the 
-            directory containing mcflirt motion estimates
-        - `reffile` = filename for reference image in mcflirt 
-            motion estimate
-        - `param_reg_name` = name of output file
+    Uses fsl's applyxfm.
+
+    Parameters
+    ----------
+    param_name : pathlib.Path
+        Path to the parameter estimate to which we want to apply 
+        motion.
+    transform_dir : pathlib.Path
+        Path to a directory containing mcflirt motion estimates.
+    reffile : pathlib.Path
+        Path for reference image in mcflirt motion estimate.
+    param_reg_name : pathlib.Path
+        Savename of output file
     """
     # list of transformations in transform_dir
     transforms = sorted(transform_dir.glob('**/*'))
@@ -294,22 +337,42 @@ def _register_param(param_name, transform_dir, reffile, param_reg_name):
 
 def hcp_asl_moco(subject_dir, mt_factors, superlevel=1, cores=mp.cpu_count(), order=3):
     """
-    This function performs the full motion-correction pipeline for 
-    the HCP ASL data. The steps of the pipeline include:
-    - Bias-field correction
-    - MT correction
-    - Saturation recovery
-    - Initial slice-timing correction
-    - Motion estimation
-    - Second slice-timing correction
-    - Registration
+    Full ASL correction and motion estimation pipeline.
 
-    Inputs
-        - `subject_dir` = pathlib.Path object specifying the 
-            subject's base directory
-        - `mt_factors` = pathlib.Path object specifying the 
-            location of empirically estimated MT correction 
-            scaling factors
+    This function performs the full motion-correction pipeline for 
+    the HCP ASL data. The steps of the pipeline are:
+    #. Bias-field correction using the bias-field estimated from 
+    the first calibration image;
+    #. MT correction using pre-calculated correction factors;
+    #. An initial fit of the `satrecov` model on the bias and 
+    MT-corrected series;
+    #. Median filtering of the estimated T1 map;
+    #. Initial slice-time correction using the median filtered 
+    T1 map;
+    #. Motion estimation;
+    #. Apply the motion estimates to the pre-slicetime-correction 
+    ASL series;
+    #. Second fit of the 'satrecov' model on motion-corrected 
+    series;
+    #. Apply motion estimates to resulting T1 map so that it is 
+    aligned with each of the volumes in the ASL series;
+    #. Refined slice-timing correction
+
+    Parameters
+    ----------
+    subject_dir : pathlib.Path
+        Path to the subject's base directory.
+    mt_factors : pathlib.Path
+        Path to the pre-calculated MT correction scaling factors.
+    superlevel : int, optional
+        Superlevel to use when using regtricks. Default is 1.
+    cores : int, optional
+        Number of cores regtricks will use. Default is the number 
+        of cores available.
+    order : int, optional
+        Order of interpolation to be used by regtricks. This is 
+        passed to scipy's map_coordinates. See that for more 
+        information. Default is 3.
     """
     # asl sequence parameters
     ntis = 5
@@ -322,93 +385,72 @@ def hcp_asl_moco(subject_dir, mt_factors, superlevel=1, cores=mp.cpu_count(), or
     n_slices = 60
     # load json containing important file info
     json_dict = load_json(subject_dir)
-    # create directories for results
-    tis_dir_name = Path(json_dict['TIs_dir'])
-    first_pass_dir = tis_dir_name / 'FirstPass'
-    second_pass_dir = tis_dir_name / 'SecondPass'
-    create_dirs([tis_dir_name, first_pass_dir, second_pass_dir])
     # original ASL series and bias field names
     asl_name = Path(json_dict['ASL_seq'])
     bias_name = json_dict['calib0_bias']
-    old_m02asl = first_pass_dir / 'MoCo/m02asln.mat'
-    # iterate over first and second passes
-    for n, iteration in enumerate((first_pass_dir, second_pass_dir)):
-        bcorr_dir = iteration / 'BiasCorr'
-        mtcorr_dir = iteration / 'MTCorr'
-        satrecov_dir = iteration / 'SatRecov'
-        stcorr_dir = iteration / 'STCorr'
-        moco_dir = iteration / 'MoCo'
-        asln2m0_name = moco_dir / 'asln2m0.mat'
-        m02asln_name = moco_dir / 'm02asln.mat'
-        asln2asl0_name = moco_dir / 'asln2asl0.mat'
-        asl02asln_name = moco_dir / 'asl02asln.mat'
-        create_dirs([
-            bcorr_dir,
-            mtcorr_dir,
-            satrecov_dir,
-            stcorr_dir,
-            moco_dir,
-            asln2m0_name,
-            m02asln_name,
-            asln2asl0_name,
-            asl02asln_name
-        ])
-        # bias correct the original ASL series
-        bcorr_img = bcorr_dir / 'tis_biascorr.nii.gz'
-        if n == 1:
-            # register bias field to ASL series
-            reg_bias_name = bcorr_dir / 'bias_reg.nii.gz'
-            old_m02asl = rt.MotionCorrection.from_mcflirt(
-                str(old_m02asl),
-                bias_name,
-                bias_name
-            )
-            nib.save(old_m02asl.apply_to_image(
-                    bias_name,
-                    bias_name,
-                    superlevel=superlevel,
-                    cores=cores,
-                    order=order
-            ), str(reg_bias_name))
-            bias_name = reg_bias_name
-        fslmaths(str(asl_name)).div(str(bias_name)).run(str(bcorr_img))
-        # apply MT scaling factors to the bias-corrected ASL series
-        mtcorr_name = mtcorr_dir / 'tis_mtcorr.nii.gz'
-        # load mt factors
-        mt_sfs = np.loadtxt(mt_factors)
-        biascorr_img = Image(str(bcorr_img))
-        assert (len(mt_sfs) == biascorr_img.shape[2])
-        mtcorr_img = Image(biascorr_img.data*mt_sfs.reshape(1, 1, -1, 1), header=biascorr_img.header)
-        mtcorr_img.save(str(mtcorr_name))
-        # estimate satrecov model on bias and MT corrected ASL series
-        t1_name = _saturation_recovery(mtcorr_name, satrecov_dir, ntis, iaf, ibf, tis, rpts)
-        t1_filt_name = _fslmaths_med_filter_wrapper(t1_name)
-        # perform slice-time correction using estimated tissue params
-        stcorr_img, stfactors_img = _slicetiming_correction(mtcorr_name, t1_filt_name, tis, rpts, slicedt, sliceband, n_slices)
-        stcorr_name = stcorr_dir / 'tis_stcorr.nii.gz'
-        stcorr_img.save(stcorr_name)
-        stfactors_name = stcorr_dir / 'st_scaling_factors.nii.gz'
-        stfactors_img.save(stfactors_name)
-        # register ASL series to calibration image
-        reg_name = moco_dir / 'initial_registration_TIs.nii.gz'
-        mcflirt(stcorr_img, reffile=json_dict['calib0_mc'], mats=True, out=str(reg_name))
-        # rename mcflirt matrices directory
-        orig_mcflirt = moco_dir / 'initial_registration_TIs.nii.gz.mat'
-        if asln2m0_name.exists():
-            shutil.rmtree(asln2m0_name)
-        orig_mcflirt.rename(asln2m0_name)
-        # get motion estimates from ASLn to ASL0 (and their inverses)
-        asl2m0_list = sorted(asln2m0_name.glob('**/MAT*'))
-        m02asl0 = np.linalg.inv(np.loadtxt(asl2m0_list[0]))
-        for n, xform in enumerate(asl2m0_list):
-            if n == 0:
-                fwd_xform = np.eye(4)
-            else:
-                fwd_xform = m02asl0 @ np.loadtxt(xform)
-            inv_xform = np.linalg.inv(fwd_xform)
-            np.savetxt(m02asln_name / xform.stem, np.linalg.inv(np.loadtxt(xform)))
-            np.savetxt(asln2asl0_name / xform.stem, fwd_xform)
-            np.savetxt(asl02asln_name / xform.stem, inv_xform)
+    # create directories for results
+    tis_dir_name = Path(json_dict['TIs_dir'])
+    bcorr_dir = tis_dir_name / 'BiasCorr'
+    mtcorr_dir = tis_dir_name / 'MTCorr'
+    satrecov_dir = tis_dir_name / 'SatRecov'
+    stcorr_dir = tis_dir_name / 'STCorr'
+    moco_dir = tis_dir_name / 'MoCo'
+    asln2m0_name = moco_dir / 'asln2m0.mat'
+    m02asln_name = moco_dir / 'm02asln.mat'
+    asln2asl0_name = moco_dir / 'asln2asl0.mat'
+    asl02asln_name = moco_dir / 'asl02asln.mat'
+    create_dirs([
+        tis_dir_name,
+        bcorr_dir,
+        mtcorr_dir,
+        satrecov_dir,
+        stcorr_dir,
+        moco_dir,
+        asln2m0_name,
+        m02asln_name,
+        asln2asl0_name,
+        asl02asln_name
+    ])
+    # bias correct the original ASL series
+    bcorr_img = bcorr_dir / 'tis_biascorr.nii.gz'
+    fslmaths(str(asl_name)).div(str(bias_name)).run(str(bcorr_img))
+    # apply MT scaling factors to the bias-corrected ASL series
+    mtcorr_name = mtcorr_dir / 'tis_mtcorr.nii.gz'
+    # load mt factors
+    mt_sfs = np.loadtxt(mt_factors)
+    biascorr_img = Image(str(bcorr_img))
+    assert (len(mt_sfs) == biascorr_img.shape[2])
+    mtcorr_img = Image(biascorr_img.data*mt_sfs.reshape(1, 1, -1, 1), header=biascorr_img.header)
+    mtcorr_img.save(str(mtcorr_name))
+    # estimate satrecov model on bias and MT corrected ASL series
+    t1_name = _saturation_recovery(mtcorr_name, satrecov_dir, ntis, iaf, ibf, tis, rpts)
+    t1_filt_name = _fslmaths_med_filter_wrapper(t1_name)
+    # perform slice-time correction using estimated tissue params
+    stcorr_img, stfactors_img = _slicetiming_correction(mtcorr_name, t1_filt_name, tis, rpts, slicedt, sliceband, n_slices)
+    stcorr_name = stcorr_dir / 'tis_stcorr.nii.gz'
+    stcorr_img.save(stcorr_name)
+    stfactors_name = stcorr_dir / 'st_scaling_factors.nii.gz'
+    stfactors_img.save(stfactors_name)
+    # register ASL series to calibration image
+    reg_name = moco_dir / 'initial_registration_TIs.nii.gz'
+    mcflirt(stcorr_img, reffile=json_dict['calib0_mc'], mats=True, out=str(reg_name))
+    # rename mcflirt matrices directory
+    orig_mcflirt = moco_dir / 'initial_registration_TIs.nii.gz.mat'
+    if asln2m0_name.exists():
+        shutil.rmtree(asln2m0_name)
+    orig_mcflirt.rename(asln2m0_name)
+    # get motion estimates from ASLn to ASL0 (and their inverses)
+    asl2m0_list = sorted(asln2m0_name.glob('**/MAT*'))
+    m02asl0 = np.linalg.inv(np.loadtxt(asl2m0_list[0]))
+    for n, xform in enumerate(asl2m0_list):
+        if n == 0:
+            fwd_xform = np.eye(4)
+        else:
+            fwd_xform = m02asl0 @ np.loadtxt(xform)
+        inv_xform = np.linalg.inv(fwd_xform)
+        np.savetxt(m02asln_name / xform.stem, np.linalg.inv(np.loadtxt(xform)))
+        np.savetxt(asln2asl0_name / xform.stem, fwd_xform)
+        np.savetxt(asl02asln_name / xform.stem, inv_xform)
     # register pre-ST-correction ASLn to ASL0
     temp_reg_mtcorr = moco_dir / 'temp_reg_tis_mtcorr.nii.gz'
     asln2m0_moco = rt.MotionCorrection.from_mcflirt(
@@ -427,8 +469,8 @@ def hcp_asl_moco(subject_dir, mt_factors, superlevel=1, cores=mp.cpu_count(), or
     reg_mtcorr.save(str(temp_reg_mtcorr))
 
     # estimate satrecov model on motion-corrected data
-    satrecov_dir = iteration / 'SatRecov2'
-    stcorr_dir = iteration / 'STCorr2'
+    satrecov_dir = tis_dir_name / 'SatRecov2'
+    stcorr_dir = tis_dir_name / 'STCorr2'
     create_dirs([satrecov_dir, stcorr_dir])
     t1_name = _saturation_recovery(temp_reg_mtcorr, satrecov_dir, ntis, iaf, ibf, tis, rpts)
     t1_filt_name = _fslmaths_med_filter_wrapper(t1_name)

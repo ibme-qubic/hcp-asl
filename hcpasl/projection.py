@@ -9,6 +9,9 @@ import multiprocessing as mp
 import nibabel as nb
 
 def project_to_surface(subject_dir, target='structural'):
+    """
+    Project the results of the pipeline to the cortical surface.
+    """
     # load subject's json
     json_dict = load_json(subject_dir)
 

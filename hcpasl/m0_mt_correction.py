@@ -16,6 +16,16 @@ def load_json(subject_dir):
     Load json but with some error-checking to make sure it exists.
     If it doesn't exist, instruct user to run the first part of 
     the pipeline first.
+
+    Parameters
+    ----------
+    subject_dir : pathlib.Path
+        Path to subject's base directory.
+    
+    Returns
+    -------
+    dict
+        Dictionary containing important file paths.
     """
     json_name = subject_dir / 'ASL/ASL.json'
     if json_name.exists():
@@ -28,16 +38,20 @@ def load_json(subject_dir):
 
 def update_json(new_dict, old_dict):
     """
-    Adds the key-value pairs in `new_dict` to the `old_dict` 
+    Add key-value pairs to the dictionary.
+
+    Add the key-value pairs in `new_dict` to `old_dict` 
     and save the resulting dictionary to the json found in 
     `old_dict['json_name']`.
 
-    Inputs:
-        - `new_dict` = dictionary containing new key-value 
-            pairs to add to the json of important file 
-            names
-        - `old_dict` = dictionary to be updated, also 
-            has a field containing the location of the json.
+    Parameters
+    ----------
+    new_dict : dict
+        New key-value pairs to add to the json of important 
+        file names.
+    old_dict : dict
+        Dictionary to be updated. Also has a field containing 
+        the location of the json to update.
     """
     old_dict.update(new_dict)
     with open(Path(old_dict['json_name']), 'w') as fp:
@@ -45,18 +59,21 @@ def update_json(new_dict, old_dict):
 
 def correct_M0(subject_dir, mt_factors):
     """
-    Correct the M0 images for a particular subject whose data 
-    is stored in `subject_dir`. The corrections to be 
-    performed include:
-        - Bias-field correction
-        - Magnetisation Transfer correction
+    Correct the M0 images.
     
-    Inputs
-        - `subject_dir` = pathlib.Path object specifying the 
-            subject's base directory
-        - `mt_factors` = pathlib.Path object specifying the 
-            location of empirically estimated MT correction 
-            scaling factors
+    For each of the subject's two calibration images:
+    #. Use BET on the image;
+    #. Use FAST on the brain-extracted image to obtain the bias-field;
+    #. Perform bias correction;
+    #. Multiply by the provided 'mt_factors' for MT-effect correction.
+    
+    Parameters
+    ----------
+    subject_dir : pathlib.Path
+        Path to the subject's base directory.
+    mt_factors : pathlib.Path
+        Path to the empirically estimated MT correction 
+        scaling factors.
     """
     # load json containing info on where files are stored
     json_dict = load_json(subject_dir)
@@ -70,7 +87,7 @@ def correct_M0(subject_dir, mt_factors):
         calib_name_stem = calib_path.stem.split('.')[0]
 
         # run BET on m0 image
-        betted_m0 = bet(calib_name, LOAD, g=0.2, f=0.2)
+        betted_m0 = bet(calib_name, LOAD, g=0.2, f=0.2, m=True)
 
         # create directories to store results
         fast_dir = calib_dir / 'FAST'
@@ -79,17 +96,22 @@ def correct_M0(subject_dir, mt_factors):
         create_dirs([fast_dir, biascorr_dir, mtcorr_dir])
 
         # estimate bias field on brain-extracted m0 image
-            # run FAST, storing results in directory
-        fast_base = fast_dir / calib_name_stem
-        fast(
+        fast_results = fast(
             betted_m0['output'], # output of bet
-            out=str(fast_base), 
+            out=LOAD, 
             type=3, # image type, 3=PD image
             b=True, # output estimated bias field
             nopve=True # don't need pv estimates
         )
+        # use fslmath's -dilall for dilation of FAST's bias field
         bias_name = fast_dir / f'{calib_name_stem}_bias.nii.gz'
-
+        masked_bias = Image(
+            betted_m0['output_mask'].get_data()*fast_results['out_bias'].get_data(), 
+            header=betted_m0['output_mask'].header
+        )
+        masked_bias.save(str(bias_name))
+        subprocess.run(['fslmaths', bias_name, '-dilall', bias_name])
+        
         # apply bias field to original m0 image (i.e. not BETted)
         biascorr_name = biascorr_dir / f'{calib_name_stem}_restore.nii.gz'
         fslmaths(calib_name).div(str(bias_name)).run(str(biascorr_name))
