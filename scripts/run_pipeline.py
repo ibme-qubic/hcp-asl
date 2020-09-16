@@ -89,11 +89,7 @@ def process_subject(subject_dir, mt_factors, cores, order, mbpcasl, structural, 
             run_oxford_asl(subject_dir, target=target)
             project_to_surface(subject_dir, target=target)
         else:
-            surface_proc_call = [
-                "hcp_asl_projected",
-                str(subject_dir)
-            ]
-            subprocess.run(surface_proc_call, check=True)
+            surface_analysis(subject_dir)
 
 def main():
     """

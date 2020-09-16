@@ -216,7 +216,7 @@ def surface_analysis(subject_dir):
                 tiimg,
                 mid_name,
                 proj_tiimg_name,
-                "-enclosed"
+                "-enclosing"
             ]
             print(f'Running command: {cmd}')
             subprocess.run(cmd)
