@@ -491,11 +491,19 @@ def main():
     sfs_name = op.join(asl_dir, "combined_scaling_factors.nii.gz")
     sfs_outpath = op.join(distcorr_out_dir, "combined_scaling_factors.nii.gz")
     if not op.exists(sfs_outpath) or force_refresh:
+        # don't do intensity correction here
+        gdc = rt.NonLinearRegistration.from_fnirt(gdc_path, asl_vol0, 
+                asl_vol0, constrain_jac=(0.01,100))
+        epi_dc = rt.NonLinearRegistration.from_fnirt(epi_dc_path, 
+                mask_name, struct, constrain_jac=(0.01,100))
+        if target == 'asl':
+            struct2asl_aslreg = op.join(distcorr_out_dir, "struct2asl.mat")
+            struct2asl_aslreg = rt.Registration.from_flirt(struct2asl_aslreg,
+                                                src=struct, ref=asl)
+            epi_dc = rt.chain(epi_dc, struct2asl_aslreg)
         # don't chain transformations together if we don't have to
-        try:
-            asl2struct_mc_dc
-        except NameError:
-            asl2struct_mc_dc = rt.chain(asl_mc, gdc, epi_dc)
+        
+        asl2struct_mc_dc = rt.chain(asl_mc, gdc, epi_dc)
         sfs_corrected = asl2struct_mc_dc.apply_to_image(src=sfs_name, 
                                                         ref=reference, 
                                                         cores=mp.cpu_count())
